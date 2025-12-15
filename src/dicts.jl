@@ -17,7 +17,8 @@ function LMDBDict{K,V}(path::String; readonly::Bool = false, rdahead::Bool = fal
     end
     env = LMDB.create()
     if !isnothing(mapsize)
-        env[:MapSize] = mapsize
+        # The size given needs to be rounded to the next multiple of the system's PAGESIZE
+        env[:MapSize] = cld(mapsize, PAGESIZE) * PAGESIZE
     end
     if !isnothing(readers)
         env[:Readers] = readers
