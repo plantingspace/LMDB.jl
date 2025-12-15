@@ -158,14 +158,17 @@ This function retrieves key/data pairs from the database.
 """
 function get(cur::Cursor, key, ::Type{T}, op::MDB_cursor_op=MDB_SET_KEY) where T
     # Setup parameters
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue())
+    key_ref = toref(key)
+    GC.@preserve key_ref begin
+        mdb_key_ref = Ref(MDBValue(key_ref))
+        mdb_val_ref = Ref(MDBValue())
 
-    # Get value
-    mdb_cursor_get(cur.handle, mdb_key_ref, mdb_val_ref, op)
+        # Get value
+        mdb_cursor_get(cur.handle, mdb_key_ref, mdb_val_ref, op)
 
-    # Convert to proper type
-    return mbd_unpack(T, mdb_val_ref)
+        # Convert to proper type
+        return mbd_unpack(T, mdb_val_ref)
+    end
 end
 
 """Store by cursor.
@@ -173,10 +176,14 @@ end
 This function stores key/data pairs into the database. The cursor is positioned at the new item, or on failure usually near it.
 """
 function put!(cur::Cursor, key, val; flags::Cuint = zero(Cuint))
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue(toref(val)))
+    key_ref = toref(key)
+    val_ref = toref(val)
+    GC.@preserve key_ref val_ref begin
+        mdb_key_ref = Ref(MDBValue(key_ref))
+        mdb_val_ref = Ref(MDBValue(val_ref))
 
-    mdb_cursor_put(cur.handle, mdb_key_ref, mdb_val_ref, flags)
+        mdb_cursor_put(cur.handle, mdb_key_ref, mdb_val_ref, flags)
+    end
 end
 
 "Delete current key/data pair to which the cursor refers"
