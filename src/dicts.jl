@@ -10,12 +10,21 @@ mutable struct LMDBDict{K,V}
         x
     end
 end
-function LMDBDict{K,V}(path::String; readonly = false, rdahead=false) where {K,V}
+function LMDBDict{K,V}(path::String; readonly::Bool = false, rdahead::Bool = false, mapsize::Union{Nothing, Int} = nothing, readers::Union{Nothing, Int} = nothing, dbs::Union{Nothing, Int} = nothing) where {K,V}
     flags = readonly ? MDB_RDONLY : zero(Cuint)
     if !rdahead
         flags = flags | MDB_NORDAHEAD
     end
     env = LMDB.create()
+    if !isnothing(mapsize)
+        env[:MapSize] = mapsize
+    end
+    if !isnothing(readers)
+        env[:Readers] = readers
+    end
+    if !isnothing(dbs)
+        env[:DBs] = dbs
+    end
     open(env, path)
     #A transaction just for getting a DBI handle
     dbi = LMDB.start(env,flags=flags) do txn
