@@ -5,6 +5,7 @@ module LMDB
     import Base: open, close, getindex, setindex!, put!, reset,
                  isopen, count, delete!, keys, get, show, show
     import Base.Iterators: drop
+    import Mmap: PAGESIZE
 
     export Environment, create, open, close, sync, set!, unset!, getindex, setindex!, path, info, show,
            Transaction, start, abort, commit, reset, renew, environment,

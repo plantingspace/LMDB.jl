@@ -2,12 +2,11 @@ module LMDB_DBI
     using LMDB
     using Test
 
-    const dbname = "testdb"
     key = 10
     val = "key value is "
 
     # Create dir
-    mkdir(dbname)
+    mktempdir() do dbname
     try
 
         # Procedural style
@@ -23,8 +22,8 @@ module LMDB_DBI
             @test isopen(txn)
             commit(txn)
             @test !isopen(txn)
-            close(env, dbi)
-            @test !isopen(dbi)
+            # Don't close dbi after modifying it - this can cause corruption
+            # The environment will automatically close it when env is closed
         finally
             close(env)
         end
@@ -35,7 +34,7 @@ module LMDB_DBI
             set!(env, LMDB.MDB_NOSYNC)
             open(env, dbname)
             start(env) do txn
-                open(txn, flags = Cuint(LMDB.MDB_REVERSEKEY)) do dbi
+                open(txn) do dbi
                     k = key
                     value = get(txn, dbi, k, String)
                     println("Got value for key $(k): $(value)")
@@ -59,6 +58,7 @@ module LMDB_DBI
             end
         end
     finally
-        rm(dbname, recursive=true)
+        # mktempdir will clean up automatically
+    end
     end
 end

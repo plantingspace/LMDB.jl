@@ -60,28 +60,46 @@ toref(v::Ptr{Nothing}) = v
 
 "Store items into a database"
 function put!(txn::Transaction, dbi::DBI, key, val; flags::Cuint = zero(Cuint))
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue(toref(val)))
-    r = mdb_put(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref, flags)
-    r
+    key_ref = toref(key)
+    val_ref = toref(val)
+    GC.@preserve key_ref val_ref begin
+        mdb_key_ref = Ref(MDBValue(key_ref))
+        mdb_val_ref = Ref(MDBValue(val_ref))
+        r = mdb_put(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref, flags)
+        r
+    end
 end
 
 "Delete items from a database"
 function delete!(txn::Transaction, dbi::DBI, key, val=C_NULL)
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = val === C_NULL ? Ref(MDBValue()) : Ref(MDBValue(toref(val)))
-
-    mdb_del(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+    key_ref = toref(key)
+    if val === C_NULL
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            mdb_del(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+        end
+    else
+        val_ref = toref(val)
+        GC.@preserve key_ref val_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue(val_ref))
+            mdb_del(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+        end
+    end
 end
 
 "Get items from a database"
 function get(txn::Transaction, dbi::DBI, key, ::Type{T}) where T
-    mdb_key_ref = Ref(MDBValue(toref(key)))
-    mdb_val_ref = Ref(MDBValue())
+    key_ref = toref(key)
+    GC.@preserve key_ref begin
+        mdb_key_ref = Ref(MDBValue(key_ref))
+        mdb_val_ref = Ref(MDBValue())
 
-    # Get value
-    mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+        # Get value
+        mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
 
-    # Convert to proper type
-    return mbd_unpack(T, mdb_val_ref)
+        # Convert to proper type
+        return mbd_unpack(T, mdb_val_ref)
+    end
 end

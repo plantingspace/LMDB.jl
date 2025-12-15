@@ -10,12 +10,22 @@ mutable struct LMDBDict{K,V}
         x
     end
 end
-function LMDBDict{K,V}(path::String; readonly = false, rdahead=false) where {K,V}
+function LMDBDict{K,V}(path::String; readonly::Bool = false, rdahead::Bool = false, mapsize::Union{Nothing, Int} = nothing, readers::Union{Nothing, Int} = nothing, dbs::Union{Nothing, Int} = nothing) where {K,V}
     flags = readonly ? MDB_RDONLY : zero(Cuint)
     if !rdahead
         flags = flags | MDB_NORDAHEAD
     end
     env = LMDB.create()
+    if !isnothing(mapsize)
+        # The size given needs to be rounded to the next multiple of the system's PAGESIZE
+        env[:MapSize] = cld(mapsize, PAGESIZE) * PAGESIZE
+    end
+    if !isnothing(readers)
+        env[:Readers] = readers
+    end
+    if !isnothing(dbs)
+        env[:DBs] = dbs
+    end
     open(env, path)
     #A transaction just for getting a DBI handle
     dbi = LMDB.start(env,flags=flags) do txn
@@ -87,84 +97,99 @@ end
 
 function Base.haskey(d::LMDBDict{K}, key) where K
     txn_dbi_do(d, readonly = true) do txn, dbi
-        mdb_key_ref = Ref(MDBValue(toref(convert(K,key))))
-        mdb_val_ref = Ref(MDBValue())
-        # Get value
-        ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
-        if ret == MDB_NOTFOUND
-            return false
-        elseif ret == Cint(0)
-            return true
-        else
-            throw(LMDB.LMDBError(ret))
+        key_ref = toref(convert(K,key))
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            # Get value
+            ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+            if ret == MDB_NOTFOUND
+                return false
+            elseif ret == Cint(0)
+                return true
+            else
+                throw(LMDB.LMDBError(ret))
+            end
         end
     end
 end
 
 function Base.get(d::LMDBDict{K,V}, key, default) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        mdb_key_ref = Ref(MDBValue(toref(convert(K,key))))
-        mdb_val_ref = Ref(MDBValue())
-        # Get value
-        ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
-        if ret == MDB_NOTFOUND
-            return default
-        elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
-        else
-            throw(LMDB.LMDBError(ret))
+        key_ref = toref(convert(K,key))
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            # Get value
+            ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+            if ret == MDB_NOTFOUND
+                return default
+            elseif ret == Cint(0)
+                return mbd_unpack(V, mdb_val_ref)
+            else
+                throw(LMDB.LMDBError(ret))
+            end
         end
     end
 end
 
 function Base.get!(d::LMDBDict{K,V}, key, default) where {K,V}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        mdb_key_ref = Ref(MDBValue(toref(convert(K,key))))
-        mdb_val_ref = Ref(MDBValue())
-        # Get value
-        ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
-        if ret == MDB_NOTFOUND
-            d[key] = default
-            return default
-        elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
-        else
-            throw(LMDB.LMDBError(ret))
+        key_ref = toref(convert(K,key))
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            # Get value
+            ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+            if ret == MDB_NOTFOUND
+                d[key] = default
+                return default
+            elseif ret == Cint(0)
+                return mbd_unpack(V, mdb_val_ref)
+            else
+                throw(LMDB.LMDBError(ret))
+            end
         end
     end
 end
 
 function Base.get(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Type}}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        mdb_key_ref = Ref(MDBValue(toref(convert(K,key))))
-        mdb_val_ref = Ref(MDBValue())
-        # Get value
-        ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
-        if ret == MDB_NOTFOUND
-            default = f()
-            return default
-        elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
-        else
-            throw(LMDB.LMDBError(ret))
+        key_ref = toref(convert(K,key))
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            # Get value
+            ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+            if ret == MDB_NOTFOUND
+                default = f()
+                return default
+            elseif ret == Cint(0)
+                return mbd_unpack(V, mdb_val_ref)
+            else
+                throw(LMDB.LMDBError(ret))
+            end
         end
     end
 end
 
 function Base.get!(f::F, d::LMDBDict{K,V}, key) where {K,V,F<:Union{Function, Type}}
     txn_dbi_do(d, readonly = true) do txn, dbi
-        mdb_key_ref = Ref(MDBValue(toref(convert(K,key))))
-        mdb_val_ref = Ref(MDBValue())
-        # Get value
-        ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
-        if ret == MDB_NOTFOUND
-            default = f()
-            d[key] = default
-            return default
-        elseif ret == Cint(0)
-            return mbd_unpack(V, mdb_val_ref)
-        else
-            throw(LMDB.LMDBError(ret))
+        key_ref = toref(convert(K,key))
+        GC.@preserve key_ref begin
+            mdb_key_ref = Ref(MDBValue(key_ref))
+            mdb_val_ref = Ref(MDBValue())
+            # Get value
+            ret = _mdb_get(txn.handle, dbi.handle, mdb_key_ref, mdb_val_ref)
+            if ret == MDB_NOTFOUND
+                default = f()
+                d[key] = default
+                return default
+            elseif ret == Cint(0)
+                return mbd_unpack(V, mdb_val_ref)
+            else
+                throw(LMDB.LMDBError(ret))
+            end
         end
     end
 end
