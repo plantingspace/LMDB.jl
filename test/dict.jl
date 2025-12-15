@@ -1,8 +1,7 @@
 using Test, LMDB
 @testset "Dictionary-like interface" begin
-p1 = tempname()
 #Test dict with string keys, float64 values
-mkpath(p1)
+p1 = mktempdir()
 d = LMDBDict{String, Float64}(p1)
 d["x"] = 5.0
 d["y"] = 12.0
@@ -21,8 +20,7 @@ delete!(d,"z")
 @test_throws LMDB.LMDBError d["z"]
 
 #Test int key and values
-p2 = tempname()
-mkpath(p2)
+p2 = mktempdir()
 d = LMDBDict{Int64, Int16}(p2)
 for i in 1:10
     d[i] = i+1
@@ -35,8 +33,7 @@ end
 @test keytype(d) == Int64
 
 #Some extra tests for string dicts
-p3 = tempname()
-mkpath(p3)
+p3 = mktempdir()
 d = LMDBDict{String, Vector{Float32}}(p3)
 d["aa/a"] = Float32[1,2,3,4]
 d["aa/b"] = Float32.(2:12)
